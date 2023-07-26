@@ -45,7 +45,7 @@ public class MyBot : IChessBot
         {
             board.MakeMove(move);
 
-            score = -Search(board, 300, -2147483647, 2147483647); // depth in centiply
+            score = -Search(board, 400, -2147483647, 2147483647, 2); // depth in centiply
 
             board.UndoMove(move);
             if (score > bestScore)
@@ -58,7 +58,7 @@ public class MyBot : IChessBot
         return bestMove;
     }
 
-    public int Search(Board board, int depth, int alpha, int beta)
+    public int Search(Board board, int depth, int alpha, int beta, int nullMoveDepth)
     {
         int score = alpha; // Prevents unassigned local variable error; Doesn't actually do anything.
 
@@ -69,6 +69,19 @@ public class MyBot : IChessBot
                 return beta;
             if (score > alpha)
                 alpha = score;
+        }
+
+        // Null Move Pruning
+        
+        if (!board.IsInCheck() && nullMoveDepth > 0 && depth > 0) {
+            board.TrySkipTurn();
+
+            score = -Search(board, depth - 300, -beta, -beta + 1, nullMoveDepth - 1);
+
+            board.UndoSkipTurn();
+
+            if (score >= beta)
+                return beta;
         }
 
         Span<Move> moves = stackalloc Move[256];
@@ -82,12 +95,12 @@ public class MyBot : IChessBot
             board.MakeMove(move);
 
             if(foundPV) {
-                score = -Search(board, depth - 100, -alpha - 1, -alpha);
+                score = -Search(board, depth - 100, -alpha - 1, -alpha, 2);
                 PVSFailed = (score > alpha) && (score < beta);
             }
 
             if(!foundPV || PVSFailed)
-                score = -Search(board, depth - 100, -beta, -alpha);
+                score = -Search(board, depth - 100, -beta, -alpha, nullMoveDepth);
 
             board.UndoMove(move);
 
