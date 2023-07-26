@@ -8,10 +8,10 @@ public class MyBot : IChessBot
 {
     public int[] pieceValue = { 0, 100, 300, 300, 500, 900, 2000 };
     
-    public Move[] GetLegalMoves(Board board, bool capturesOnly)
+    public void GetLegalMovesNonAlloc(Board board, ref Span<Move> moves, bool capturesOnly)
     {
-        Move[] moves = board.GetLegalMoves(capturesOnly);
-        int[] moveOrder = new int[moves.Length];
+        board.GetLegalMovesNonAlloc(ref moves, capturesOnly);
+        Span<int> moveOrder = stackalloc int[moves.Length];
 
         Move move;
 
@@ -25,16 +25,17 @@ public class MyBot : IChessBot
                 - pieceValue[(int)move.PromotionPieceType]
                 - (move.IsCapture ? 1000 : 0)
                 - (board.IsInCheckmate() ? 3000 : 0);
+                //+ (board.IsRepeatedPosition() ? 3000 : 0);
             board.UndoMove(move);
         }
 
-        Array.Sort(moveOrder, moves);
-        return moves;
+        MemoryExtensions.Sort(moveOrder, moves);
     }
 
     public Move Think(Board board, Timer timer)
     {
-        Move[] moves = GetLegalMoves(board, false);
+        Span<Move> moves = stackalloc Move[256];
+        GetLegalMovesNonAlloc(board, ref moves, false);
 
         int score;
         int bestScore = -2147483647;
@@ -44,7 +45,7 @@ public class MyBot : IChessBot
         {
             board.MakeMove(move);
 
-            score = -Search(board, 400, -2147483647, 2147483647); // depth in centiply
+            score = -Search(board, 300, -2147483647, 2147483647); // depth in centiply
 
             board.UndoMove(move);
             if (score > bestScore)
@@ -70,7 +71,9 @@ public class MyBot : IChessBot
                 alpha = score;
         }
 
-        Move[] moves = GetLegalMoves(board, depth <= 0);
+        Span<Move> moves = stackalloc Move[256];
+        GetLegalMovesNonAlloc(board, ref moves, depth <= 0);
+
         bool foundPV = false;
         bool PVSFailed = false;
 
