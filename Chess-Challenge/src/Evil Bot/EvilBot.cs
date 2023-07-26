@@ -12,7 +12,6 @@ namespace ChessChallenge.Example
             Move[] moves = board.GetLegalMoves(capturesOnly);
             int[] moveOrder = new int[moves.Length];
 
-            int moveScore;
             Move move;
 
             for (int index = 0; index < moves.Length; index++)
