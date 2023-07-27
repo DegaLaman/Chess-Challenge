@@ -67,6 +67,10 @@ public class MyBot : IChessBot
             score = Evaluate(board);
             if (score >= beta)
                 return beta;
+            
+            if (score + 900 < alpha)
+                return alpha;
+
             if (score > alpha)
                 alpha = score;
         }
@@ -92,6 +96,7 @@ public class MyBot : IChessBot
 
         foreach (Move move in moves)
         {
+
             board.MakeMove(move);
 
             if(foundPV) {

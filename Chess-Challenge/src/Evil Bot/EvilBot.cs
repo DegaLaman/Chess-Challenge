@@ -43,7 +43,7 @@ namespace ChessChallenge.Example
             {
                 board.MakeMove(move);
 
-                score = -Search(board, 3, -2147483647, 2147483647);
+                score = -Search(board, 4, -2147483647, 2147483647);
 
                 board.UndoMove(move);
                 if (score > bestScore)
