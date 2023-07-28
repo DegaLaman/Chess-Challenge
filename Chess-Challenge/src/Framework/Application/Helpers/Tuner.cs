@@ -4,19 +4,21 @@ namespace ChessChallenge.Application
     {
         
         public static void Run() {
-            int[] eg_pawn_table = 
+            int[] table = 
             {
-                  0,   0,   0,   0,   0,   0,   0,   0,
-                 13,   8,   8,  10,  13,   0,   2,  -7,
-                  4,   7,  -6,   1,   0,  -5,  -1,  -8,
-                 13,   9,  -3,  -7,  -7,  -8,   3,  -1,
-                 32,  24,  13,   5,  -2,   4,  17,  17,
-                 94, 100,  85,  67,  56,  53,  82,  84,
-                178, 173, 158, 134, 147, 132, 165, 187,
-                  0,   0,   0,   0,   0,   0,   0,   0
-            };
+    -74, -35, -18, -18, -11,  15,   4, -17,
+    -12,  17,  14,  17,  17,  38,  23,  11,
+     10,  17,  23,  15,  20,  45,  44,  13,
+     -8,  22,  24,  27,  26,  33,  26,   3,
+    -18,  -4,  21,  24,  27,  23,   9, -11,
+    -19,  -3,  11,  21,  23,  16,   7,  -9,
+    -27, -11,   4,  13,  14,   4,  -5, -17,
+    -53, -34, -21, -11, -28, -14, -24, -43
+};
 
-            ulong [] Scoreboard = convertPSTtoScoreboard(eg_pawn_table);
+
+
+            ulong [] Scoreboard = convertPSTtoScoreboard(table);
             LogArray(Scoreboard);
         }
 
@@ -35,6 +37,10 @@ namespace ChessChallenge.Application
             for (int index = 0; index < 64; index++)
             {
                 PST[index] += 128;
+
+                // Clamp
+                PST[index] = (PST[index] > 255) ? 255 : PST[index];
+                PST[index] = (PST[index] < 0) ? 0 : PST[index];
                 for (int scoreboardIndex = 0; scoreboardIndex < 8; scoreboardIndex++)
                 {
                     if ((PST[index] & 1) == 1)
