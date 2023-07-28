@@ -20,13 +20,13 @@ public class MyBot : IChessBot
         {
             { // Opening/Midgame, Pawn, Scoreboards{
                 0x001B7095DA5A8E00,
-                0x00C239E6150F6B00,
-                0x00478FAB3E8ABE00,
-                0x00AF064EA2ED2E00,
-                0x00338E16596DAE00,
-                0x00DECF8781A1E700,
-                0x009F8F878191BB00,
-                0xFF6070787E7E7FFF
+                0x001239E6150F6B00,
+                0x00178FAB3E8ABE00,
+                0x001F064EA2ED2E00,
+                0x00138E16596DAE00,
+                0x001ECF8781A1E700,
+                0x001F8F878191BB00,
+                0xFF1070787E7E7FFF
             },
             { // Opening/Midgame, Knight, Scoreboards
                 0xFAD36D3F69739BDB,
@@ -145,13 +145,19 @@ public class MyBot : IChessBot
 
     public int[,] pieceValue = new int[2, 6]
     {
-        { 82, 337, 365, 477, 1025, 0 },
-        { 94, 281, 297, 512, 936, 0 }
+        { 82, 337, 365, 477, 1025, 2000 },
+        { 94, 281, 297, 512, 936, 2000}
     };
     public int[] piecePhase = { 0, 1, 1, 2, 4, 0 };
 
     public int Evaluate(Board board)
     {
+        if (board.IsInCheckmate())
+            return -32000;
+        
+        if (board.IsDraw())
+            return 0;
+
         int openingScore = 0,
             endingScore = 0,
             pieceCount,
@@ -196,6 +202,8 @@ public class MyBot : IChessBot
         return ((openingScore * phase + endingScore * (24 - phase)) / 24)
             * (board.IsWhiteToMove ? 1 : -1);
     }
+
+    public int[] moveOrderPieceValues = {0,100, 300, 300, 500, 900, 2000};
     public void GetLegalMovesNonAlloc(Board board, ref Span<Move> moves, bool capturesOnly)
     {
         board.GetLegalMovesNonAlloc(ref moves, capturesOnly);
@@ -208,9 +216,9 @@ public class MyBot : IChessBot
             move = moves[index];
             board.MakeMove(move);
             moveOrder[index] =
-                pieceValue[0,(int)move.MovePieceType]
-                - pieceValue[0,(int)move.CapturePieceType]
-                - pieceValue[0,(int)move.PromotionPieceType]
+                moveOrderPieceValues[(int)move.MovePieceType]
+                - moveOrderPieceValues[(int)move.CapturePieceType]
+                - moveOrderPieceValues[(int)move.PromotionPieceType]
                 - (move.IsCapture ? 1000 : 0)
                 - (board.IsInCheckmate() ? 3000 : 0);
                 //+ (board.IsRepeatedPosition() ? 3000 : 0);
@@ -286,13 +294,13 @@ public class MyBot : IChessBot
         GetLegalMovesNonAlloc(board, ref moves, false);
 
         int score,
-            bestScore = -32767;
+            bestScore = -32000;
         Move bestMove = moves[0];
 
         foreach (Move move in moves)
         {
             board.MakeMove(move);
-            score = Evaluate(board);
+            score = -Search(board, 500, bestScore, 32000, 2);
             board.UndoMove(move);
 
             if (score > bestScore)
