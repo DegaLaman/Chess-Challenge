@@ -208,7 +208,7 @@ public class MyBot : IChessBot
             move = moves[index];
             board.MakeMove(move);
             moveOrder[index] =
-                pieceValue[(0,(int)move.MovePieceType]
+                pieceValue[0,(int)move.MovePieceType]
                 - pieceValue[0,(int)move.CapturePieceType]
                 - pieceValue[0,(int)move.PromotionPieceType]
                 - (move.IsCapture ? 1000 : 0)
