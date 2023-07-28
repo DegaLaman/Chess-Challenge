@@ -56,6 +56,13 @@ namespace ChessChallenge.Application
                 FileHelper.OpenUrl("https://forms.gle/6jjj8jxNQ5Ln53ie6");
             }
 
+            // Tuner
+            buttonPos.Y += breakSpacing;
+            if (NextButtonInRow("Tuner", ref buttonPos, spacing, buttonSize))
+            {
+                AutoTuner.Run();
+            }
+
             // Window and quit buttons
             buttonPos.Y += breakSpacing;
 
