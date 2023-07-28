@@ -15,7 +15,7 @@ public class MyBot : IChessBot
     public ulong[,,] PST = new ulong[2, 6, 8] // Opening/Ending, PieceType, Scoreboard
     {
         {
-            { // Opening/Midgame, White, Pawn, Scoreboards
+            { // Opening/Midgame, Pawn, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -25,7 +25,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Opening/Midgame, White, Knight, Scoreboards
+            { // Opening/Midgame, Knight, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -35,7 +35,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Opening/Midgame, White, Bishop, Scoreboards
+            { // Opening/Midgame, Bishop, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -45,7 +45,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Opening/Midgame, White, Rook, Scoreboards
+            { // Opening/Midgame, Rook, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -55,7 +55,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Opening/Midgame, White, Queen, Scoreboards
+            { // Opening/Midgame, Queen, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -65,7 +65,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Opening/Midgame, White, King, Scoreboards
+            { // Opening/Midgame, King, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -77,7 +77,7 @@ public class MyBot : IChessBot
             }
         },
         {
-            { // Ending, White, Pawn, Scoreboards
+            { // Ending, Pawn, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -87,7 +87,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Ending, White, Knight, Scoreboards
+            { // Ending, Knight, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -97,7 +97,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Ending, White, Bishop, Scoreboards
+            { // Ending, Bishop, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -107,7 +107,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Ending, White, Rook, Scoreboards
+            { // Ending, Rook, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -117,7 +117,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Ending, White, Queen, Scoreboards
+            { // Ending, Queen, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -127,7 +127,7 @@ public class MyBot : IChessBot
                 0x0000000000000000,
                 0x0000000000000000
             },
-            { // Ending, White, King, Scoreboards
+            { // Ending, King, Scoreboards
                 0x0000000000000000,
                 0x0000000000000000,
                 0x0000000000000000,
@@ -142,8 +142,8 @@ public class MyBot : IChessBot
 
     public int[,] pieceValue = new int[2, 6]
     {
-        { 100, 300, 300, 500, 900, 0 },
-        { 100, 300, 300, 500, 900, 0 }
+        { 82, 337, 365, 477, 1025, 0 },
+        { 94, 281, 297, 512, 936, 0 }
     };
     public int[] piecePhase = { 0, 1, 1, 2, 4, 0 };
 

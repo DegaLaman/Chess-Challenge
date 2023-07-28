@@ -44,7 +44,7 @@ public class EvilBot : IChessBot
         {
             board.MakeMove(move);
 
-            score = -Search(board, 400, -2147483647, 2147483647, 2); // depth in centiply
+            score = -Search(board, 300, -2147483647, 2147483647, 2); // depth in centiply
 
             board.UndoMove(move);
             if (score > bestScore)
