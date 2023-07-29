@@ -3,140 +3,68 @@ using System;
 
 namespace ChessChallenge.Example
 {
-public class EvilBot : IChessBot
-{
-    public int[] pieceValue = { 0, 100, 300, 300, 500, 900, 2000 };
-    
-    public void GetLegalMovesNonAlloc(Board board, ref Span<Move> moves, bool capturesOnly)
+    // Tier 1 Evilbot
+    public class EvilBot : IChessBot
     {
-        board.GetLegalMovesNonAlloc(ref moves, capturesOnly);
-        Span<int> moveOrder = stackalloc int[moves.Length];
+        //                     .  P    K    B    R    Q    K
+        int[] kPieceValues = { 0, 100, 300, 310, 500, 900, 10000 };
+        int kMassiveNum = 99999999;
 
-        Move move;
+        int mDepth;
+        Move mBestMove;
 
-        for (int index = 0; index < moves.Length; index++)
+        public Move Think(Board board, Timer timer)
         {
-            move = moves[index];
-            board.MakeMove(move);
-            moveOrder[index] =
-                pieceValue[(int)move.MovePieceType]
-                - pieceValue[(int)move.CapturePieceType]
-                - pieceValue[(int)move.PromotionPieceType]
-                - (move.IsCapture ? 1000 : 0)
-                - (board.IsInCheckmate() ? 3000 : 0);
-                //+ (board.IsRepeatedPosition() ? 3000 : 0);
-            board.UndoMove(move);
+            Move[] legalMoves = board.GetLegalMoves();
+            mDepth = 3;
+
+            EvaluateBoardNegaMax(board, mDepth, -kMassiveNum, kMassiveNum, board.IsWhiteToMove ? 1 : -1);
+
+            return mBestMove;
         }
 
-        MemoryExtensions.Sort(moveOrder, moves);
-    }
-
-    public Move Think(Board board, Timer timer)
-    {
-        Span<Move> moves = stackalloc Move[256];
-        GetLegalMovesNonAlloc(board, ref moves, false);
-
-        int score;
-        int bestScore = -2147483647;
-        Move bestMove = moves[0];
-
-        foreach (Move move in moves)
+        int EvaluateBoardNegaMax(Board board, int depth, int alpha, int beta, int color)
         {
-            board.MakeMove(move);
+            Move[] legalMoves;
 
-            score = -Search(board, 400, -2147483647, 2147483647, 2); // depth in centiply
+            if (board.IsDraw())
+                return 0;
 
-            board.UndoMove(move);
-            if (score > bestScore)
+            if (depth == 0 || (legalMoves = board.GetLegalMoves()).Length == 0)
             {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
+                // EVALUATE
+                int sum = 0;
 
-        return bestMove;
-    }
+                if (board.IsInCheckmate())
+                    return -9999999;
 
-    public int Search(Board board, int depth, int alpha, int beta, int nullMoveDepth)
-    {
-        int score = alpha; // Prevents unassigned local variable error; Doesn't actually do anything.
+                for (int i = 0; ++i < 7;)
+                    sum += (board.GetPieceList((PieceType)i, true).Count - board.GetPieceList((PieceType)i, false).Count) * kPieceValues[i];
+                // EVALUATE
 
-        if (depth <= 0)
-        { //QSearch
-            score = Evaluate(board);
-            if (score >= beta)
-                return beta;
-            
-            if (score + 900 < alpha)
-                return alpha;
-
-            if (score > alpha)
-                alpha = score;
-        }
-
-        // Null Move Pruning
-        
-        if (!board.IsInCheck() && nullMoveDepth > 0 && depth > 0) {
-            board.TrySkipTurn();
-
-            score = -Search(board, depth - 300, -beta, -beta + 1, nullMoveDepth - 1);
-
-            board.UndoSkipTurn();
-
-            if (score >= beta)
-                return beta;
-        }
-
-        Span<Move> moves = stackalloc Move[256];
-        GetLegalMovesNonAlloc(board, ref moves, depth <= 0);
-
-        bool foundPV = false;
-        bool PVSFailed = false;
-
-        foreach (Move move in moves)
-        {
-
-            board.MakeMove(move);
-
-            if(foundPV) {
-                score = -Search(board, depth - 100, -alpha - 1, -alpha, 2);
-                PVSFailed = (score > alpha) && (score < beta);
+                return color * sum;
             }
 
-            if(!foundPV || PVSFailed)
-                score = -Search(board, depth - 100, -beta, -alpha, nullMoveDepth);
+            // TREE SEARCH
+            int recordEval = int.MinValue;
+            foreach (Move move in legalMoves)
+            {
+                board.MakeMove(move);
+                int evaluation = -EvaluateBoardNegaMax(board, depth - 1, -beta, -alpha, -color);
+                board.UndoMove(move);
 
-            board.UndoMove(move);
+                if (recordEval < evaluation)
+                {
+                    recordEval = evaluation;
+                    if (depth == mDepth)
+                        mBestMove = move;
+                }
+                alpha = Math.Max(alpha, recordEval);
+                if (alpha >= beta) break;
+            }
+            // TREE SEARCH
 
-            if (score >= beta)
-                return beta; // Hard-fail beta
-            if (score > alpha)
-                alpha = score; // new PV
-                foundPV = true;
+            return recordEval;
         }
-        return alpha;
     }
-
-    public int Evaluate(Board board)
-    {
-
-        if (board.IsDraw())
-            return 0;
-
-        if (board.IsInCheckmate())
-            return -2147483647;
-
-        int score = 0;
-
-        foreach (PieceList pieceList in board.GetAllPieceLists())
-        {
-            score +=
-                pieceList.Count
-                * pieceValue[(int)pieceList.TypeOfPieceInList]
-                * (pieceList.IsWhitePieceList ^ board.IsWhiteToMove ? -1 : 1);
-        }
-
-        return score;
-    }
-}
 }
