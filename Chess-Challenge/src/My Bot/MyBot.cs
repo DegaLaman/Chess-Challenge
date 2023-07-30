@@ -5,20 +5,20 @@ using System;
 //using System.Collections.Generic;
 //using System.Linq;
 
-using ChessChallenge.Application;
+using ChessChallenge.Application; // #DEBUG
 
 public class MyBot : IChessBot
 {
     Move[] bestOrRefutation = new Move[64];
-    int search,
-        eval;
+    int search, // #DEBUG
+        eval; // #DEBUG
 
     int MAX_PLY = 4;
 
     public Move Think(Board board, Timer timer)
     {
-        search = 0;
-        eval = 0;
+        search = 0; // #DEBUG
+        eval = 0; // #DEBUG
         for (int i = MAX_PLY; i <= MAX_PLY; i++)
         {
             Search(board, -32000, 32000, i, board.IsWhiteToMove ? 1 : -1);
@@ -28,13 +28,13 @@ public class MyBot : IChessBot
             "Last Think: " + search.ToString() + " " + eval.ToString(),
             false,
             ConsoleColor.Green
-        );
+        ); // #DEBUG
         return bestOrRefutation[0];
     }
 
     public int Search(Board board, int alpha, int beta, int depth, int side)
     {
-        search++;
+        search++; // #DEBUG
         if (board.IsInsufficientMaterial() || board.IsRepeatedPosition() || board.FiftyMoveCounter >= 100)
             return MAX_PLY - depth;
 
@@ -42,8 +42,10 @@ public class MyBot : IChessBot
 
         if (depth <= 0)
         {
+            eval++; // #DEBUG
             // Stand Pat Evaluation
-            eval++;
+            
+
             bool pieceColor;
 
             int openingScore = 0,
@@ -63,8 +65,8 @@ public class MyBot : IChessBot
                 pieceBitboard = board.GetPieceBitboard((PieceType)(pieceType + 1), pieceColor);
                 pieceCount = BitboardHelper.GetNumberOfSetBits(pieceBitboard);
                 pieceColorValue = pieceColor ? 1 : -1;
-                openingScore += pieceCount * (pieceColorValue * pieceValue[0, pieceType]);
-                endingScore += pieceCount * (pieceColorValue * pieceValue[1, pieceType]);
+                openingScore += pieceCount * (pieceColorValue * pieceValue[0, pieceType] - 128);
+                endingScore += pieceCount * (pieceColorValue * pieceValue[1, pieceType] - 128);
                 phase += piecePhase[pieceType] * pieceCount;
                 if (!pieceColor)
                 {
