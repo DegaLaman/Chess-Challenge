@@ -7,109 +7,51 @@ using System;
 
 using ChessChallenge.Application;
 
-//   40 tokens, Start
-
 public class MyBot : IChessBot
 {
-    Move[] bestOrRefutation = new Move[1024];
-    Move[] currentMove = new Move[1024];
-    int[] currentMoveIndex = new int[1024];
-    int[] alpha = new int[1024],
-        beta = new int[1024],
-        score = new int[1024];
+    Move[] bestOrRefutation = new Move[64];
+    int search,
+        eval;
 
-    Move[][] moves = new Move[1024][];
-    int thinkCount = 0;
-    int evals = 0;
+    int MAX_PLY = 4;
 
     public Move Think(Board board, Timer timer)
     {
-        thinkCount = 0;
-        evals = 0;
-        int plyIndex = 5,
-            currentMoveIndexValue;
-        Move[] currentMoves;
-
-        alpha[plyIndex] = -32000;
-        beta[plyIndex] = 32000;
-
-        goto StartNewNode;
-
-        ReturnFrom:
-        // START: Returning from a lower node
-        //ConsoleHelper.Log("Exit: " + plyIndex.ToString(), false, ConsoleColor.Green);
-        score[plyIndex - 1] = -score[plyIndex];
-        plyIndex--;
-        board.UndoMove(currentMove[plyIndex]);
-
-        if (score[plyIndex] >= beta[plyIndex]) // Will never occur at starting ply depth
+        search = 0;
+        eval = 0;
+        for (int i = MAX_PLY; i <= MAX_PLY; i++)
         {
-            score[plyIndex] = beta[plyIndex]; // Fail-Hard
-
-            goto ReturnFrom;
+            Search(board, -32000, 32000, i, board.IsWhiteToMove ? 1 : -1);
         }
 
-        if (score[plyIndex] > alpha[plyIndex])
+        ConsoleHelper.Log(
+            "Last Think: " + search.ToString() + " " + eval.ToString(),
+            false,
+            ConsoleColor.Green
+        );
+        return bestOrRefutation[0];
+    }
+
+    public int Search(Board board, int alpha, int beta, int depth, int side)
+    {
+        search++;
+        if (board.IsInsufficientMaterial() || board.IsRepeatedPosition() || board.FiftyMoveCounter >= 100)
+            return MAX_PLY - depth;
+
+        int score;
+
+        if (depth <= 0)
         {
-            alpha[plyIndex] = score[plyIndex];
-            bestOrRefutation[plyIndex] = currentMove[plyIndex];
-        }
-
-        currentMoveIndex[plyIndex]++;
-        if (currentMoveIndex[plyIndex] >= moves[plyIndex].Length)
-        {
-            if (plyIndex == 5)
-            {
-                ConsoleHelper.Log(
-                    "Last Thought: " + thinkCount.ToString() + " " + evals.ToString(),
-                    false,
-                    ConsoleColor.Green
-                );
-                return bestOrRefutation[5];
-            }
-            // Return alpha
-            score[plyIndex] = alpha[plyIndex];
-            goto ReturnFrom;
-        }
-        // GOTO: Continue checking moves
-        // END: Returning from a lower node
-
-        CheckNextMove:
-        // START: Checking a move
-        currentMove[plyIndex] = moves[plyIndex][currentMoveIndex[plyIndex]];
-        board.MakeMove(currentMove[plyIndex]);
-        alpha[plyIndex + 1] = -beta[plyIndex];
-        beta[plyIndex + 1] = -alpha[plyIndex];
-        plyIndex++;
-        //ConsoleHelper.Log("Enter: " + plyIndex.ToString(), false, ConsoleColor.Green);
-        // END: Enter new node
-
-        StartNewNode:
-        // START: Node Entry
-        thinkCount++;
-        if (board.IsInCheckmate())
-        {
-            score[plyIndex] = -32010 + plyIndex;
-            goto ReturnFrom;
-        }
-
-        if (board.IsInsufficientMaterial() || board.IsRepeatedPosition())
-        {
-            score[plyIndex] = -plyIndex;
-            goto ReturnFrom;
-        }
-
-        if (plyIndex >= 10)
-        { //QSearch
-            // Evaluate board
-            evals++;
+            // Stand Pat Evaluation
+            eval++;
             bool pieceColor;
 
             int openingScore = 0,
                 endingScore = 0,
                 pieceCount,
                 phase = 0,
-                pieceType;
+                pieceType,
+                pieceColorValue;
 
             ulong pieceBitboard,
                 reversedBitboard;
@@ -119,87 +61,106 @@ public class MyBot : IChessBot
                 pieceType = piece >> 1;
                 pieceColor = (piece & 1) == 0;
                 pieceBitboard = board.GetPieceBitboard((PieceType)(pieceType + 1), pieceColor);
+                pieceCount = BitboardHelper.GetNumberOfSetBits(pieceBitboard);
+                pieceColorValue = pieceColor ? 1 : -1;
+                openingScore += pieceCount * (pieceColorValue * pieceValue[0, pieceType]);
+                endingScore += pieceCount * (pieceColorValue * pieceValue[1, pieceType]);
+                phase += piecePhase[pieceType] * pieceCount;
                 if (!pieceColor)
                 {
                     reversedBitboard = 0;
                     for (int scoreboardIndex = 0; scoreboardIndex < 8; scoreboardIndex++)
                     {
-                        reversedBitboard = reversedBitboard << 8 | (pieceBitboard & 0xFF);
-                        pieceBitboard >>= 1;
+                        reversedBitboard = (reversedBitboard << 8) | (pieceBitboard & 0xFF);
+                        pieceBitboard >>= 8;
                     }
                     pieceBitboard = reversedBitboard;
                 }
-                pieceCount = BitboardHelper.GetNumberOfSetBits(pieceBitboard);
-                openingScore += pieceCount * (pieceValue[0, pieceType] - 128);
-                endingScore += pieceCount * (pieceValue[1, pieceType] - 128);
-                phase += piecePhase[pieceType] * pieceCount;
                 for (int scoreboardIndex = 0; scoreboardIndex < 8; scoreboardIndex++)
                 {
                     openingScore +=
-                        (1 << scoreboardIndex)
-                        * BitboardHelper.GetNumberOfSetBits(
+                        BitboardHelper.GetNumberOfSetBits(
                             PST[0, pieceType, scoreboardIndex] & pieceBitboard
-                        );
+                        ) << scoreboardIndex;
                     endingScore +=
-                        (1 << scoreboardIndex)
-                        * BitboardHelper.GetNumberOfSetBits(
+                        BitboardHelper.GetNumberOfSetBits(
                             PST[1, pieceType, scoreboardIndex] & pieceBitboard
-                        );
+                        ) << scoreboardIndex;
                 }
             }
-            phase = phase > 24 ? 24 : phase;
-            score[plyIndex] =
-                ((openingScore * phase + endingScore * (24 - phase)) / 24)
-                * (board.IsWhiteToMove ? 1 : -1);
+            phase = phase > 24 ? 24 : phase; // Do I really care if the phase messes up do to early promotion?
+            score =
+                side * ((openingScore * phase + endingScore * (24 - phase)) / 24)
+                + MAX_PLY
+                - depth
+                - board.FiftyMoveCounter;
 
-            if (score[plyIndex] >= beta[plyIndex])
+            // End of Standpat Eval
+
+            if (score >= beta)
+                return beta;
+            if (score < alpha - 40 * (24 - phase))
+                return alpha;
+            alpha = Math.Max(alpha, score);
+        }
+
+        // Move Ordering
+        Move[] moves = board.GetLegalMoves(depth <= 0);
+        if (moves.Length <= 0) {
+            if(depth <= 0)
+                return board.IsDraw() ? MAX_PLY - depth : alpha;
+            return MAX_PLY - depth;
+        }
+            
+
+        int[] moveOrder = new int[moves.Length];
+        for (int i = 0; i < moves.Length; i++)
+        {
+            Move move = moves[i];
+            board.MakeMove(move);
+
+            if (board.IsInCheckmate())
             {
-                score[plyIndex] = beta[plyIndex]; // Fail-hard
-                goto ReturnFrom;
+                board.UndoMove(move);
+                bestOrRefutation[MAX_PLY - depth] = move;
+                return 32000 - MAX_PLY + depth;
             }
-            /*
-                        if(score[plyIndex] + 900 <= alpha[plyIndex]) {
-                            score[plyIndex - 1] = -alpha[plyIndex];
-                            goto ReturnFrom;
-                        }*/
-
-            if (score[plyIndex] > alpha[plyIndex])
-                alpha[plyIndex] = score[plyIndex];
-        }
-        moves[plyIndex] = board.GetLegalMoves(plyIndex >= 10);
-        currentMoves = moves[plyIndex];
-        if (currentMoves.Length <= 0)
-        {
-            score[plyIndex] = -plyIndex;
-            goto ReturnFrom;
-        }
-
-        // Sort Moves
-        int[] moveOrder = new int[currentMoves.Length];
-        for (int i = 0; i < moves[plyIndex].Length; i++)
-        {
-            board.MakeMove(currentMoves[i]);
 
             moveOrder[i] = -(
-                (board.IsInCheckmate() ? 1 << 14 : 0)
-                | (currentMoves[i].Equals(bestOrRefutation[plyIndex - 2]) ? 1 << 13 : 0)
-                | (currentMoves[i].IsCapture ? 1 << 12 : 0)
-                | (currentMoves[i].IsPromotion ? 1 << 11 : 0)
-                | (currentMoves[i].Equals(bestOrRefutation[plyIndex]) ? 1 << 10 : 0)
+                (move.Equals(bestOrRefutation[Math.Max(MAX_PLY - depth - 2,0)]) ? 1 << 13 : 0) // MAX_PLY - (depth - 2) = 5 + 2 - depth = 7 - depth
+                | (move.Equals(bestOrRefutation[MAX_PLY - depth]) ? 1 << 12 : 0) // MAX_PLY - depth
+                | (move.IsCapture ? 1 << 11 : 0)
+                | (move.IsPromotion ? 1 << 10 : 0)
                 | (board.IsInCheck() ? 1 << 9 : 0)
-                | (int)currentMoves[i].MovePieceType << 6
-                | (int)currentMoves[i].PromotionPieceType << 3
-                | (int)currentMoves[i].CapturePieceType
+                | (int)move.MovePieceType << 6
+                | (int)move.PromotionPieceType << 3
+                | (int)move.CapturePieceType
             );
 
-            board.UndoMove(currentMoves[i]);
+            board.UndoMove(move);
         }
 
-        Array.Sort(moveOrder, moves[plyIndex]);
+        Array.Sort(moveOrder, moves);
 
-        currentMoveIndex[plyIndex] = 0;
-        goto CheckNextMove;
-        // END: Node Entry
+        foreach (Move move in moves)
+        {
+            board.MakeMove(move);
+            score = -Search(board, -beta, -alpha, depth - 1, -side);
+            board.UndoMove(move);
+
+            if (score >= beta)
+            {
+                bestOrRefutation[MAX_PLY - depth] = move; // MAX_PLY - depth
+                return beta;
+            }
+            if (score > alpha)
+            {
+                alpha = score;
+                bestOrRefutation[MAX_PLY - depth] = move; // MAX_PLY - depth
+            }
+        }
+
+        return alpha;
     }
 
     // PST Borrowed from PeSTO's Evaluation Function
