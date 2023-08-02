@@ -1,3 +1,5 @@
+using System;
+
 namespace ChessChallenge.Application
 {
     public static class AutoTuner
@@ -148,6 +150,12 @@ namespace ChessChallenge.Application
             63,62,61,60,59,58,57,56,
         };
 
+        static public int[,] pieceValue = new int[2, 6]
+    {
+        { 82, 337, 365, 477, 1025, 0 },
+        { 94, 281, 297, 512, 936, 0 }
+    };
+
 
 
         public static void Run() {
@@ -202,20 +210,18 @@ namespace ChessChallenge.Application
         
         public static ulong[] convertPSTtoScoreboard(int[] PST)
         {
-            ulong[] result = { 0, 0, 0, 0, 0, 0, 0, 0 };
+            ulong[] result = { 0, 0, 0, 0, 0, 0, 0, 0 , 0 };
             int whiteFacing;
             int value;
+
+            
 
             for (int index = 0; index < 64; index++)
             {
                 whiteFacing = indexWhiteFacing[index];
-                value = PST[whiteFacing];
-                value += 128;
-
-                // Clamp
-                value = (value > 255) ? 255 : value;
-                value = (value < 0) ? 0 : value;
-                for (int scoreboardIndex = 0; scoreboardIndex < 8; scoreboardIndex++)
+                value = PST[whiteFacing] + 128;
+                value = Math.Clamp(value, 0, 255);
+                for (int scoreboardIndex = 0; scoreboardIndex < 9; scoreboardIndex++)
                 {
                     if ((value & 1) == 1)
                     {
@@ -224,6 +230,8 @@ namespace ChessChallenge.Application
 
                     value >>= 1;
                 }
+
+                if (value > 0) throw new System.Exception();
             }
 
             return result;
