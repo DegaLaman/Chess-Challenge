@@ -159,51 +159,24 @@ namespace ChessChallenge.Application
 
 
         public static void Run() {
-            ulong [] Scoreboard;
 
-            Scoreboard = convertPSTtoScoreboard(mg_pawn_table);
-            LogArray(Scoreboard, "Opening Pawn");
+            long[] encodedPieceValues = new long[7];
 
-            Scoreboard = convertPSTtoScoreboard(mg_knight_table);
-            LogArray(Scoreboard, "Opening Knight");
+            for (int i = 1; i < 7; i++)
+            {
+                encodedPieceValues[i] = pieceValue[0,i-1] * 40000 + pieceValue[1,i-1];
+            }
 
-            Scoreboard = convertPSTtoScoreboard(mg_bishop_table);
-            LogArray(Scoreboard, "Opening Bishop");
 
-            Scoreboard = convertPSTtoScoreboard(mg_rook_table);
-            LogArray(Scoreboard, "Opening Rook");
+            LogArray<long>(encodedPieceValues, "");
 
-            Scoreboard = convertPSTtoScoreboard(mg_queen_table);
-            LogArray(Scoreboard, "Opening Queen");
 
-            Scoreboard = convertPSTtoScoreboard(mg_king_table);
-            LogArray(Scoreboard, "Opening King");
-
-            ConsoleHelper.Log("}, {",false,System.ConsoleColor.Green);
-
-            Scoreboard = convertPSTtoScoreboard(eg_pawn_table);
-            LogArray(Scoreboard, "Ending Pawn");
-
-            Scoreboard = convertPSTtoScoreboard(eg_knight_table);
-            LogArray(Scoreboard, "Ending Knight");
-
-            Scoreboard = convertPSTtoScoreboard(eg_bishop_table);
-            LogArray(Scoreboard, "Ending Bishop");
-
-            Scoreboard = convertPSTtoScoreboard(eg_rook_table);
-            LogArray(Scoreboard, "Ending Rook");
-
-            Scoreboard = convertPSTtoScoreboard(eg_queen_table);
-            LogArray(Scoreboard, "Ending Queen");
-
-            Scoreboard = convertPSTtoScoreboard(eg_king_table);
-            LogArray(Scoreboard, "Ending King");
         }
 
-        public static void LogArray(ulong[] ulongs, string? message) {
+        public static void LogArray<T>(T[] items, string? message) {
             ConsoleHelper.Log("{ // " + message??"",false,System.ConsoleColor.Green);
-            foreach (ulong value in ulongs) {
-                ConsoleHelper.Log("\t0x" + value.ToString("X16")+",",false,System.ConsoleColor.Green);
+            foreach (T value in items) {
+                ConsoleHelper.Log("\t" + value.ToString()+",",false,System.ConsoleColor.Green);
             }
             ConsoleHelper.Log("},",false,System.ConsoleColor.Green);
         }

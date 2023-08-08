@@ -13,73 +13,62 @@ using System.Diagnostics; // #DEBUG
 // 697, -56
 // 689, -8
 // 693, +4
+// 691, -2
+// 631, -30 Opted out of PSTs
+// 601, -30 Cleaned up unused tokens
+// 619, +18 Got Eval Up and Running
 
 public class MyBot : IChessBot
 {
     int MAX_PLY = 4; // #DEBUG
 
     Move[] refutation = new Move[64];
-    int[,,] PST = new int[2,7,64];
-    int[] piecePhase = { 0, 0, 1, 1, 2, 4, 0 };
 
-    public MyBot()
-    {
-    }
+    int[] piecePhase = { 0, 0, 1, 1, 2, 4, 0 };
+    long[] pieceValue =
+    { //
+        0,
+        3280094,
+        13480281,
+        14600297,
+        19080512,
+        41000936,
+        0,
+    };
 
     public Move Think(Board board, Timer timer)
     {
-
         // Start Intial Eval Calc
-        int openingScore = 0,
-            endingScore = 0,
-            phase = 24;
+        long evaluation = 0;
+        int phase = 0;
 
-        for (int piece = 0; piece < 12; piece++)
+        for (int piece = 2; piece < 14; piece++)
         {
             int pieceType = piece >> 1,
                 pieceColor = piece & 1,
                 indexFlip = pieceColor == 0 ? 0 : 56,
                 colorMult = pieceColor == 0 ^ board.IsWhiteToMove ? 1 : -1,
-                index = 0;
-            for (
-                ulong pieceBitboard = board.GetPieceBitboard((PieceType)(pieceType - 1), pieceColor == 0);
-                pieceBitboard > 0;
-                pieceBitboard >>= 1, index++
-            )
-            {
-                if ((pieceBitboard & 1) == 1)
-                {
-                    openingScore +=
-                        colorMult
-                        * (PST[0, pieceType, index ^ indexFlip]);
-                    endingScore +=
-                        colorMult
-                        * (PST[1, pieceType, index ^ indexFlip]);
-                    phase -= piecePhase[pieceType];
-                }
-            }
+                pieceCount = BitboardHelper.GetNumberOfSetBits(
+                    board.GetPieceBitboard((PieceType)pieceType, pieceColor == 0)
+                );
+
+            evaluation += colorMult * pieceCount * pieceValue[pieceType];
+            phase += pieceCount * piecePhase[pieceType];
         }
 
         // End Intial Eval Calc
 
-
         for (int i = MAX_PLY; i <= MAX_PLY; i++)
         {
-            Search(board, -32000, 32000, i, openingScore, endingScore, phase);
+            Search(board, -32000, 32000, i, evaluation, phase);
         }
 
         return refutation[0];
     }
 
-    public int Search(
-        Board board,
-        int alpha,
-        int beta,
-        int depth,
-        int openingEval,
-        int endingEval,
-        int phase
-    )
+    long ENCODEVALUE = 40000; // #DEBUG
+
+    public int Search(Board board, int alpha, int beta, int depth, long evaluation, int phase)
     {
         if (
             board.IsInsufficientMaterial()
@@ -93,8 +82,15 @@ public class MyBot : IChessBot
         if (depth <= 0)
         {
             // Stand Pat Evaluation
+
+            decimal openingEval = Math.Round(evaluation / (decimal)ENCODEVALUE);
+
             score =
-                ((openingEval * phase + endingEval * (24 - phase)) / 24)
+                // Decode Evaluation
+                (
+                    phase * (int)openingEval
+                    + (24 - phase) * (int)(evaluation - ENCODEVALUE * openingEval)
+                ) / 24
                 + MAX_PLY
                 - depth
                 - board.FiftyMoveCounter;
@@ -149,31 +145,21 @@ public class MyBot : IChessBot
         foreach (Move move in moves)
         {
             board.MakeMove(move);
-            int whiteToMove = board.IsWhiteToMove ? 56 : 0,
-                capturedPiece = (int)move.CapturePieceType,
-                movedPiece = (int)move.MovePieceType - 1,
-                resultPiece = move.IsPromotion ? (int)move.PromotionPieceType - 1 : movedPiece,
-                startIndex = move.StartSquare.Index ^ whiteToMove,
-                targetIndex = move.TargetSquare.Index ^ whiteToMove;
+            int capturedPiece = (int)move.CapturePieceType,
+                movedPiece = (int)move.MovePieceType,
+                promotedPiece = (int)move.PromotionPieceType,
+                resultPiece = move.IsPromotion ? promotedPiece : movedPiece;
 
-            // Increment Eval
-            // Add Capture, Add Promotion, Subtract Move from PST, Add Move to PST
             score = -Search(
                 board,
                 -beta,
                 -alpha,
                 depth - 1,
-                82 // pieceValues[0, 1]
-                -openingEval
-                    - PST[0, capturedPiece, targetIndex ^ 56]
-                    + PST[0, movedPiece, startIndex]
-                    - PST[0, resultPiece, targetIndex],
-                94 // pieceValues[1, 1]
-                -endingEval
-                    - PST[1, capturedPiece, targetIndex ^ 56]
-                    + PST[1, movedPiece, startIndex]
-                    - PST[1, resultPiece, targetIndex],
-                phase - piecePhase[capturedPiece]
+                -evaluation
+                    - pieceValue[capturedPiece]
+                    + pieceValue[movedPiece]
+                    - pieceValue[resultPiece],
+                Math.Clamp(phase - piecePhase[capturedPiece] + piecePhase[promotedPiece], 0, 24)
             );
             board.UndoMove(move);
 
@@ -183,15 +169,10 @@ public class MyBot : IChessBot
                 refutation[MAX_PLY - depth] = move; // MAX_PLY - depth
             }
 
-            if (alpha >= beta) return beta;
-            
+            if (alpha >= beta)
+                return beta;
         }
 
         return alpha;
     }
-
-    // PST Borrowed from PeSTO's Evaluation Function
-    // as found here: https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
-    // until I write a Tuner to set these for me
-    
 }
