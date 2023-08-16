@@ -6,6 +6,7 @@ using System.Numerics;
 //using System.Linq;
 using ChessChallenge.Application; // #DEBUG
 using System.Diagnostics; // #DEBUG
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 // 762 tokens
 // 742, -20
@@ -16,13 +17,21 @@ using System.Diagnostics; // #DEBUG
 // 691, -2
 // 631, -30 Opted out of PSTs
 // 601, -30 Cleaned up unused tokens
-// 619, +18 Got Eval Up and Running, Eval >= +43 over Tier 1 in 10 sec
-// 625, +6  Forgot what I did here.
-
+// 619, +18     ELO >= +43 over Tier 1 in 10 sec, Got Eval Up and Running,
+// 625, +6      Forgot what I did here.
+// 869, +244    ELO >= -20 over Tier 1 in 10 sec! (It got worse!?), Added PVS and LMR
+// 873, +4      ELO >= -18 over Tier 1 in 10 sec, Limited PVS
+// 873, +14     ELO >= +178 over Tier 1 in 10 sec, fixed sign issue in initial eval
+// 916, +43     ELO >= +215 over Tier 1 in 10 sec, added some light time management and incremental deeping
+// 937, +21     ELO >= +406 over Tier 1 in 10 sec, additional time management
 
 public class MyBot : IChessBot
 {
-    int MAX_PLY = 5; // #DEBUG
+    int CurrentDepth,
+        allowedElapse;
+    const int TTsize = 1 << 20;
+
+    Timer globalTimer;
 
     Move[] refutation = new Move[64];
 
@@ -38,6 +47,8 @@ public class MyBot : IChessBot
         0,
     };
 
+    (ulong, Move)[] TT = new (ulong, Move)[TTsize];
+
     int researches,
         searches,
         reducedsearches,
@@ -50,17 +61,20 @@ public class MyBot : IChessBot
         long evaluation = 0;
         int phase = 0;
 
+        globalTimer = timer;
+
         researches = 0; // #DEBUG
         searches = 0; // #DEBUG
         reducedsearches = 0; // #DEBUG
         PVSs = 0; // #DEBUG
         LMRs = 0; // #DEBUG
+        refutation[0] = Move.NullMove; // #DEBUG
 
         for (int piece = 2; piece < 14; piece++)
         {
             int pieceType = piece >> 1,
                 pieceColor = piece & 1,
-                colorMult = pieceColor == 0 ^ board.IsWhiteToMove ? 1 : -1,
+                colorMult = pieceColor == 0 ^ board.IsWhiteToMove ? -1 : 1,
                 pieceCount = BitboardHelper.GetNumberOfSetBits(
                     board.GetPieceBitboard((PieceType)pieceType, pieceColor == 0)
                 );
@@ -71,9 +85,28 @@ public class MyBot : IChessBot
 
         // End Intial Eval Calc
 
-        for (int i = MAX_PLY; i <= MAX_PLY; i++)
+        // Timer Control Setup
+
+        allowedElapse = Math.Min(
+            timer.MillisecondsRemaining / 2,
+            timer.MillisecondsRemaining / 10 + timer.IncrementMilliseconds
+        );
+
+        // End Timer Control
+
+        for (CurrentDepth = 1; CurrentDepth <= 50; CurrentDepth++)
         {
-            Search(board, -32000, 32000, i, evaluation, phase);
+            try
+            {
+                Search(board, -32000, 32000, CurrentDepth, evaluation, phase);
+            }
+            catch
+            {
+                break;
+            }
+
+            if (timer.MillisecondsElapsedThisTurn > allowedElapse)
+                break;
         }
 
         ConsoleHelper.Log(
@@ -94,12 +127,15 @@ public class MyBot : IChessBot
 
     public int Search(Board board, int alpha, int beta, int depth, long evaluation, int phase)
     {
+        if (globalTimer.MillisecondsElapsedThisTurn > allowedElapse)
+            throw new Exception();
+
         if (
             board.IsInsufficientMaterial()
             || board.IsRepeatedPosition()
             || board.FiftyMoveCounter >= 100
         )
-            return MAX_PLY - depth;
+            return CurrentDepth - depth;
 
         int score;
 
@@ -115,7 +151,7 @@ public class MyBot : IChessBot
                     phase * (int)openingEval
                     + (24 - phase) * (int)(evaluation - 40000m * openingEval)
                 ) / 24
-                + MAX_PLY
+                + CurrentDepth
                 - depth
                 - board.FiftyMoveCounter;
 
@@ -128,13 +164,16 @@ public class MyBot : IChessBot
             alpha = Math.Max(alpha, score);
         }
 
+        ulong key = board.ZobristKey;
+        (ulong, Move) entry = TT[key % TTsize];
+
         // Move Ordering
         Move[] moves = board.GetLegalMoves(depth <= 0);
         if (moves.Length <= 0)
         {
             if (depth <= 0)
-                return board.IsDraw() ? MAX_PLY - depth : alpha;
-            return MAX_PLY - depth;
+                return board.IsDraw() ? CurrentDepth - depth : alpha;
+            return CurrentDepth - depth;
         }
 
         int[] moveOrder = new int[moves.Length];
@@ -146,25 +185,28 @@ public class MyBot : IChessBot
             if (board.IsInCheckmate())
             {
                 board.UndoMove(move);
-                refutation[MAX_PLY - depth] = move;
-                return 32000 - MAX_PLY + depth;
+                refutation[CurrentDepth - depth] = move;
+                TT[key % TTsize] = (key, move);
+                return 32000 - CurrentDepth + depth;
             }
-            moveOrder[i] = 0;
-            for (
-                int j = MAX_PLY - depth, shift = 12;
-                j >= Math.Max(MAX_PLY - depth - 6, 0);
-                j -= 2, shift++
-            )
-            {
-                moveOrder[i] |= (move.Equals(refutation[j]) ? 1 << shift : 0);
-            }
-            moveOrder[i] |=
-                (move.IsCapture ? 1 << 11 : 0)
+            moveOrder[i] =
+                (move == entry.Item2 ? 1 << 16 : 0)
+                | (move.IsCapture ? 1 << 11 : 0)
                 | (move.IsPromotion ? 1 << 10 : 0)
                 | (board.IsInCheck() ? 1 << 9 : 0)
                 | (int)move.MovePieceType << 6
                 | (int)move.PromotionPieceType << 3
                 | (int)move.CapturePieceType;
+            ;
+
+            for (
+                int j = Math.Max(CurrentDepth - depth - 4, 0), shift = 15;
+                j <= CurrentDepth - depth;
+                j += 2, shift--
+            )
+            {
+                moveOrder[i] |= move.Equals(refutation[j]) ? 1 << shift : 0;
+            }
 
             moveOrder[i] = -moveOrder[i];
 
@@ -172,6 +214,9 @@ public class MyBot : IChessBot
         }
 
         Array.Sort(moveOrder, moves);
+
+        if (depth == CurrentDepth)
+            refutation[0] = moves[0];
 
         // Setup for PVS and Late Move Reductions
         int sinceLastIncrease = 0;
@@ -192,7 +237,7 @@ public class MyBot : IChessBot
                 + pieceValue[movedPiece]
                 - pieceValue[resultPiece];
 
-            bool LMR = !(capturedPiece > 0 || board.IsInCheck() || PVS) && sinceLastIncrease > 3,
+            bool LMR = !(capturedPiece > 0 || board.IsInCheck() || PVS) && sinceLastIncrease >= 3,
                 research = false;
 
             int PVSwindow = PVS ? -alpha - 1 : -beta,
@@ -231,15 +276,19 @@ public class MyBot : IChessBot
             if (score > alpha)
             {
                 alpha = score;
-                refutation[MAX_PLY - depth] = move; // MAX_PLY - depth
-                PVS = true;
+                refutation[CurrentDepth - depth] = move; // CurrentDepth - depth
+                PVS = beta - alpha >= 200; // Only use PVS for large windows
                 sinceLastIncrease = 0;
             }
 
             if (alpha >= beta)
-                return beta;
+                break;
         }
 
-        return alpha;
+        if (refutation[0] == Move.NullMove) // #DEBUG
+            throw new Exception("SHIT"); // #DEBUG
+        
+        TT[key % TTsize] = (key, refutation[CurrentDepth - depth]);
+        return (alpha >= beta) ? beta : alpha;
     }
 }
