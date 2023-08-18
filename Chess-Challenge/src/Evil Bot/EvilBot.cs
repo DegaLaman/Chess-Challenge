@@ -90,7 +90,7 @@ public class EvilBot : IChessBot
             // TT move
             if(move == entry.move) scores[i] = 1000000;
             // https://www.chessprogramming.org/MVV-LVA
-            /*else*/ if(move.IsCapture) scores[i] = 100 * (int)move.CapturePieceType - (int)move.MovePieceType;
+            else if(move.IsCapture) scores[i] = 100 * (int)move.CapturePieceType - (int)move.MovePieceType;
         }
 
         Move bestMove = Move.NullMove;
