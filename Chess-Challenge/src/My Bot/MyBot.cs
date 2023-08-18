@@ -6,7 +6,6 @@ using System.Numerics;
 //using System.Linq;
 using ChessChallenge.Application; // #DEBUG
 using System.Diagnostics; // #DEBUG
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 // 762 tokens
 // 742, -20
@@ -17,13 +16,17 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 // 691, -2
 // 631, -30 Opted out of PSTs
 // 601, -30 Cleaned up unused tokens
-// 619, +18     ELO >= +43 over Tier 1 in 10 sec, Got Eval Up and Running,
+// 619, +18     ELO >= +43 against Tier 1 in 10 sec, Got Eval Up and Running,
 // 625, +6      Forgot what I did here.
-// 869, +244    ELO >= -20 over Tier 1 in 10 sec! (It got worse!?), Added PVS and LMR
-// 873, +4      ELO >= -18 over Tier 1 in 10 sec, Limited PVS
-// 873, +14     ELO >= +178 over Tier 1 in 10 sec, fixed sign issue in initial eval
-// 916, +43     ELO >= +215 over Tier 1 in 10 sec, added some light time management and incremental deeping
-// 937, +21     ELO >= +406 over Tier 1 in 10 sec, additional time management
+// 869, +244    ELO >= -20 against Tier 1 in 10 sec! (It got worse!?), Added PVS and LMR
+// 873, +4      ELO >= -18 against Tier 1 in 10 sec, Limited PVS
+// 873, +14     ELO >= +178 against Tier 1 in 10 sec, fixed sign issue in initial eval
+// 916, +43     ELO >= +215 against Tier 1 in 10 sec, added some light time management and incremental deeping
+// 937, +21     ELO >= +406 against Tier 1 in 10 sec, additional time management
+// 985, +48     ELO >= ???? against Tier 2 in 10 sec, added Transposition Table and modified move ordering
+// 995, +10     ELO >= ???? against Tier 2 in 10 sec, fail-soft, commented out PVS and LMR
+// 992, -3      ELO >= -596 against Tier 2 in 10 sec, move ordering, mate detection changes
+// 994, +2      ELO >= -534 against Tier 2 in 10 sec, ???
 
 public class MyBot : IChessBot
 {
@@ -31,9 +34,7 @@ public class MyBot : IChessBot
         allowedElapse;
     const int TTsize = 1 << 20;
 
-    Timer globalTimer;
-
-    Move[] refutation = new Move[64];
+    (Move, Move)[] refutation = new (Move, Move)[64];
 
     int[] piecePhase = { 0, 0, 1, 1, 2, 4, 0 };
     long[] pieceValue =
@@ -61,14 +62,12 @@ public class MyBot : IChessBot
         long evaluation = 0;
         int phase = 0;
 
-        globalTimer = timer;
-
         researches = 0; // #DEBUG
         searches = 0; // #DEBUG
         reducedsearches = 0; // #DEBUG
         PVSs = 0; // #DEBUG
         LMRs = 0; // #DEBUG
-        refutation[0] = Move.NullMove; // #DEBUG
+        refutation[0].Item1 = Move.NullMove; // #DEBUG
 
         for (int piece = 2; piece < 14; piece++)
         {
@@ -89,25 +88,16 @@ public class MyBot : IChessBot
 
         allowedElapse = Math.Min(
             timer.MillisecondsRemaining / 2,
-            timer.MillisecondsRemaining / 10 + timer.IncrementMilliseconds
+            timer.MillisecondsRemaining / 30 + timer.IncrementMilliseconds
         );
 
         // End Timer Control
-
-        for (CurrentDepth = 1; CurrentDepth <= 50; CurrentDepth++)
+        try
         {
-            try
-            {
-                Search(board, -32000, 32000, CurrentDepth, evaluation, phase);
-            }
-            catch
-            {
-                break;
-            }
-
-            if (timer.MillisecondsElapsedThisTurn > allowedElapse)
-                break;
+            for (CurrentDepth = 1; CurrentDepth <= 100; CurrentDepth++)
+                Search(board, timer, -32000, 32000, CurrentDepth, 0, evaluation, phase);
         }
+        catch { }
 
         ConsoleHelper.Log(
             "Searches: "
@@ -120,14 +110,25 @@ public class MyBot : IChessBot
                 + PVSs.ToString()
                 + " Late Move Reductions: "
                 + LMRs.ToString()
+                + " Depth Attained: "
+                + CurrentDepth.ToString()
         ); // #DEBUG
 
-        return refutation[0];
+        return refutation[0].Item1;
     }
 
-    public int Search(Board board, int alpha, int beta, int depth, long evaluation, int phase)
+    public int Search(
+        Board board,
+        Timer timer,
+        int alpha,
+        int beta,
+        int depth,
+        int ply,
+        long evaluation,
+        int phase
+    )
     {
-        if (globalTimer.MillisecondsElapsedThisTurn > allowedElapse)
+        if (timer.MillisecondsElapsedThisTurn > allowedElapse) // Time Management
             throw new Exception();
 
         if (
@@ -135,11 +136,15 @@ public class MyBot : IChessBot
             || board.IsRepeatedPosition()
             || board.FiftyMoveCounter >= 100
         )
-            return CurrentDepth - depth;
+            return ply;
+
+        int bestScore = -64000;
+
+        bool qsearch = depth <= 0;
 
         int score;
 
-        if (depth <= 0)
+        if (qsearch)
         {
             // Stand Pat Evaluation
 
@@ -151,8 +156,7 @@ public class MyBot : IChessBot
                     phase * (int)openingEval
                     + (24 - phase) * (int)(evaluation - 40000m * openingEval)
                 ) / 24
-                + CurrentDepth
-                - depth
+                + ply
                 - board.FiftyMoveCounter;
 
             // End of Standpat Eval
@@ -168,55 +172,35 @@ public class MyBot : IChessBot
         (ulong, Move) entry = TT[key % TTsize];
 
         // Move Ordering
-        Move[] moves = board.GetLegalMoves(depth <= 0);
-        if (moves.Length <= 0)
-        {
-            if (depth <= 0)
-                return board.IsDraw() ? CurrentDepth - depth : alpha;
-            return CurrentDepth - depth;
-        }
+        Move[] moves = board.GetLegalMoves(qsearch);
 
         int[] moveOrder = new int[moves.Length];
         for (int i = 0; i < moves.Length; i++)
         {
             Move move = moves[i];
-            board.MakeMove(move);
 
-            if (board.IsInCheckmate())
-            {
-                board.UndoMove(move);
-                refutation[CurrentDepth - depth] = move;
-                TT[key % TTsize] = (key, move);
-                return 32000 - CurrentDepth + depth;
-            }
-            moveOrder[i] =
-                (move == entry.Item2 ? 1 << 16 : 0)
-                | (move.IsCapture ? 1 << 11 : 0)
-                | (move.IsPromotion ? 1 << 10 : 0)
-                | (board.IsInCheck() ? 1 << 9 : 0)
-                | (int)move.MovePieceType << 6
-                | (int)move.PromotionPieceType << 3
-                | (int)move.CapturePieceType;
-            ;
+            moveOrder[i] = -(
+                move == entry.Item2
+                    ? 100000
+                    : move == refutation[ply].Item1
+                        ? 99999 + (ply == 0 ? 2 : 0)
 
-            for (
-                int j = Math.Max(CurrentDepth - depth - 4, 0), shift = 15;
-                j <= CurrentDepth - depth;
-                j += 2, shift--
-            )
-            {
-                moveOrder[i] |= move.Equals(refutation[j]) ? 1 << shift : 0;
-            }
-
-            moveOrder[i] = -moveOrder[i];
-
-            board.UndoMove(move);
+                    : move == refutation[ply].Item2 ? 99998
+                        : move.IsCapture
+                            ? (int)move.CapturePieceType * 50 - (int)move.MovePieceType + 1000
+                            : move.IsPromotion
+                                ? (int)move.PromotionPieceType + 50
+                                : move.IsCastles
+                                    ? 50
+                                    : (int)move.MovePieceType * phase
+                                        - (int)move.MovePieceType * (24 - phase)
+            );
         }
 
         Array.Sort(moveOrder, moves);
 
-        if (depth == CurrentDepth)
-            refutation[0] = moves[0];
+        if (ply == 0)
+            refutation[0].Item1 = moves[0];
 
         // Setup for PVS and Late Move Reductions
         int sinceLastIncrease = 0;
@@ -229,7 +213,12 @@ public class MyBot : IChessBot
             int capturedPiece = (int)move.CapturePieceType,
                 movedPiece = (int)move.MovePieceType,
                 promotedPiece = (int)move.PromotionPieceType,
-                resultPiece = move.IsPromotion ? promotedPiece : movedPiece;
+                resultPiece = move.IsPromotion ? promotedPiece : movedPiece,
+                currentPhase = Math.Clamp(
+                    phase - piecePhase[capturedPiece] + piecePhase[promotedPiece],
+                    0,
+                    24
+                );
 
             long currentEval =
                 -evaluation
@@ -237,22 +226,28 @@ public class MyBot : IChessBot
                 + pieceValue[movedPiece]
                 - pieceValue[resultPiece];
 
-            bool LMR = !(capturedPiece > 0 || board.IsInCheck() || PVS) && sinceLastIncrease >= 3,
-                research = false;
+            bool LMR = sinceLastIncrease < 3
+                    ? false
+                    : sinceLastIncrease < 7
+                        ? !(capturedPiece > 0 || board.IsInCheck() || PVS)
+                        : !(capturedPiece > 1 || board.IsInCheck() || PVS),
+                research;
 
             int PVSwindow = PVS ? -alpha - 1 : -beta,
                 LMRdepth = LMR ? depth - 3 : depth - 1;
 
             score = -Search(
                 board,
+                timer,
                 PVSwindow,
                 -alpha,
                 LMRdepth,
+                ply + 1,
                 currentEval,
-                Math.Clamp(phase - piecePhase[capturedPiece] + piecePhase[promotedPiece], 0, 24)
+                currentPhase
             );
 
-            research = score > alpha && score < beta;
+            research = score > alpha && score < beta && (PVS || LMR);
 
             searches++; // #DEBUG
             reducedsearches += PVS || LMR ? 1 : 0; // #DEBUG
@@ -263,32 +258,37 @@ public class MyBot : IChessBot
             if (research)
                 score = -Search(
                     board,
+                    timer,
                     -beta,
                     -alpha,
                     depth - 1,
+                    ply + 1,
                     currentEval,
-                    Math.Clamp(phase - piecePhase[capturedPiece] + piecePhase[promotedPiece], 0, 24)
+                    currentPhase
                 );
+
             board.UndoMove(move);
 
             sinceLastIncrease++;
 
-            if (score > alpha)
+            if (score > bestScore)
             {
-                alpha = score;
-                refutation[CurrentDepth - depth] = move; // CurrentDepth - depth
-                PVS = beta - alpha >= 200; // Only use PVS for large windows
+                bestScore = score;
+                alpha = Math.Max(alpha, bestScore);
+                if(refutation[ply].Item1 != move) refutation[ply].Item2 = refutation[ply].Item1;
+                refutation[ply].Item1 = move;
+                PVS = false; //beta - alpha > 1; // Only use PVS for large windows
                 sinceLastIncrease = 0;
-            }
 
-            if (alpha >= beta)
-                break;
+                if (alpha >= beta)
+                    break;
+            }
         }
 
-        if (refutation[0] == Move.NullMove) // #DEBUG
-            throw new Exception("SHIT"); // #DEBUG
-        
-        TT[key % TTsize] = (key, refutation[CurrentDepth - depth]);
-        return (alpha >= beta) ? beta : alpha;
+        if (moves.Length <= 0 && !qsearch)
+            return board.IsInCheck() ? -32000 + ply : ply;
+
+        TT[key % TTsize] = (key, refutation[ply].Item1);
+        return bestScore;
     }
 }
