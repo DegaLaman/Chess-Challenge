@@ -30,7 +30,8 @@ using System.Diagnostics; // #DEBUG
 // 994, +2      ELO >= -534 against Tier 2 in 10 sec, ???
 // 821, -173    ELO >= -364 against Tier 2 in 10 sec, updated mate detection, turned on LMR, fixed missing #DEBUGs
 // 822, +1      ELO >= -378 against Tier 2 in 10 sec, modified refutation to only include items greater than alpha (lost ELO, reverting)
-// 874, +52     ELO >= -379 against Tier 2 in 10 sec, Null Move Pruning, other updates
+// 882, +60      90 - 852 -  58   ELO >= -379 against Tier 2 in 10 sec, Null Move Pruning, other updates
+// 882, +60     ??? - ??? - ???   ELO >= ???? against Tier 2 in 10 sec
 
 public class MyBot : IChessBot
 {
@@ -96,7 +97,7 @@ public class MyBot : IChessBot
 
             decimal openingEval = Math.Round(evaluation / 40000m);
 
-            bestScore =
+            score =
                 // Decode Evaluation
                 (
                     phase * (int)openingEval
@@ -106,11 +107,11 @@ public class MyBot : IChessBot
 
             // End of Standpat Eval
 
-            if (bestScore >= beta)
+            if (score >= beta)
                 return beta;
-            if (bestScore < alpha - 975 - 40 * (24 - phase))
+            if (score < alpha - 975 - 40 * (24 - phase))
                 return alpha;
-            alpha = Math.Max(alpha, bestScore);
+            alpha = Math.Max(alpha, score);
         }
 
         // Transposition Table
