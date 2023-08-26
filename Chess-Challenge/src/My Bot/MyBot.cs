@@ -1,4 +1,5 @@
-﻿#define verbose
+﻿//#define VERBOSE  // #DEBUG
+
 using ChessChallenge.API;
 using System;
 using System.Numerics;
@@ -27,47 +28,254 @@ using System.Diagnostics; // #DEBUG
 // 995, +10     ELO >= ???? against Tier 2 in 10 sec, fail-soft, commented out PVS and LMR
 // 992, -3      ELO >= -596 against Tier 2 in 10 sec, move ordering, mate detection changes
 // 994, +2      ELO >= -534 against Tier 2 in 10 sec, ???
+// 821, -173    ELO >= -364 against Tier 2 in 10 sec, updated mate detection, turned on LMR, fixed missing #DEBUGs
+// 822, +1      ELO >= -378 against Tier 2 in 10 sec, modified refutation to only include items greater than alpha (lost ELO, reverting)
+// 874, +52     ELO >= -379 against Tier 2 in 10 sec, Null Move Pruning, other updates
 
 public class MyBot : IChessBot
 {
-    int CurrentDepth,
-        allowedElapse;
-    const int TTsize = 1 << 20;
+    // GLOBALS
+    int allowedElapse;
 
     (Move, Move)[] refutation = new (Move, Move)[64];
 
     int[] piecePhase = { 0, 0, 1, 1, 2, 4, 0 };
-    long[] pieceValue =
-    { //
-        0,
-        3280094,
-        13480281,
-        14600297,
-        19080512,
-        41000936,
-        0,
-    };
+    long[] pieceValue = { 0, 3280094, 13480281, 14600297, 19080512, 41000936, 0 };
 
-    (ulong, Move)[] TT = new (ulong, Move)[TTsize];
+    const int TTsize = 1 << 20;
+    Move[] TT = new Move[TTsize];
 
-    int researches,
-        searches,
-        reducedsearches,
-        PVSs,
-        LMRs; // #DEBUG
+    Board _board;
+    Timer _timer;
+    // END GLOBALS
+
+#if VERBOSE  // #DEBUG
+    int researches, // #DEBUG
+        searches, // #DEBUG
+        reducedsearches, // #DEBUG
+        PVSs, // #DEBUG
+        LMRs, // #DEBUG
+        quietPositions, // #DEBUG
+        drawnQuietPositions, // #DEBUG
+        checkmateQuietPositions; // #DEBUG
+#endif  // #DEBUG
+
+    public int Search(
+        int alpha,
+        int beta,
+        int depth,
+        int ply,
+        int nullDepth,
+        long evaluation,
+        int phase
+    )
+    {
+        // Time Management
+        if (_timer.MillisecondsElapsedThisTurn > allowedElapse)
+            throw new Exception();
+
+        // Draw Detection
+        if (
+            _board.IsInsufficientMaterial()
+            || _board.IsRepeatedPosition()
+            || _board.FiftyMoveCounter >= 100
+        )
+            return ply;
+
+        int bestScore = -64000,
+            score = 0,
+            sinceLastIncrease = 0;
+
+        bool qsearch = depth <= 0,
+            PVS = false;
+
+        // Quiescence search
+        if (qsearch)
+        {
+            // Stand Pat Evaluation
+
+            decimal openingEval = Math.Round(evaluation / 40000m);
+
+            bestScore =
+                // Decode Evaluation
+                (
+                    phase * (int)openingEval
+                    + (24 - phase) * (int)(evaluation - 40000m * openingEval)
+                ) / 24
+                + ply;
+
+            // End of Standpat Eval
+
+            if (bestScore >= beta)
+                return beta;
+            if (bestScore < alpha - 975 - 40 * (24 - phase))
+                return alpha;
+            alpha = Math.Max(alpha, bestScore);
+        }
+
+        // Transposition Table
+        ulong key = _board.ZobristKey;
+        Move entry = TT[key % TTsize];
+
+        if (ply > 0 && depth > 5 && nullDepth > 0 && !_board.IsInCheck() && entry != Move.NullMove)
+        {
+            _board.TrySkipTurn();
+            bestScore = -Search(
+                -beta,
+                -alpha,
+                depth - 5,
+                ply + 1,
+                nullDepth - 1,
+                -evaluation,
+                phase
+            );
+            _board.UndoSkipTurn();
+            alpha = Math.Max(alpha, bestScore);
+            if (alpha >= beta)
+                return beta; // return bestScore; ???
+        }        
+
+        // Move Ordering
+        Move[] moves = _board.GetLegalMoves(qsearch);
+
+        int[] moveOrder = new int[moves.Length];
+        for (int i = 0; i < moves.Length; i++)
+        {
+            Move move = moves[i];
+
+            moveOrder[i] = -(
+                move == entry // Transposition Table Entry First
+                    ? 188 // MAX: 188
+                    : move == refutation[ply].Item1 // Main Killer Table Entry Second
+                        ? 187 // MAX: 187
+                        : move == refutation[ply].Item2 // Secondary Killer Table Entry Third
+                            ? 186 // MAX: 186
+                            : move.IsCapture // Captures order by MVV-LVA
+                                ? (int)move.CapturePieceType * 7 - (int)move.MovePieceType + 151 // MAX: 5*7 - 1 + 151 = 185
+                                : move.IsPromotion // Order Promotions by Q,R,B,N
+                                    ? (int)move.PromotionPieceType + 145 // MAX: 5 + 145 = 150
+                                    : move.IsCastles // Castles Next
+                                        ? 145 // MAX: 145
+                                        : (int)move.MovePieceType * phase
+                                            - (int)move.MovePieceType * (24 - phase) // MAX: 6*24-6*0 = 144
+            );
+        }
+
+        Array.Sort(moveOrder, moves);
+
+        if (ply == 0)
+            refutation[0].Item1 = moves[0];
+
+        foreach (Move move in moves)
+        {
+            _board.MakeMove(move);
+
+            // Update Evaluation
+            int capturedPiece = (int)move.CapturePieceType,
+                movedPiece = (int)move.MovePieceType,
+                promotedPiece = (int)move.PromotionPieceType,
+                resultPiece = move.IsPromotion ? promotedPiece : movedPiece,
+                currentPhase = Math.Clamp(
+                    phase - piecePhase[capturedPiece] + piecePhase[promotedPiece],
+                    0,
+                    24
+                );
+
+            long currentEval =
+                -evaluation
+                - pieceValue[capturedPiece]
+                + pieceValue[movedPiece]
+                - pieceValue[resultPiece];
+
+            // Use LMR?
+            bool LMR = sinceLastIncrease > 3 & !(capturedPiece > 0 || _board.IsInCheck() || PVS),
+                research;
+
+            int PVSwindow = PVS ? -alpha - 1 : -beta,
+                LMRdepth = LMR ? depth - 3 : depth - 1;
+
+            score = -Search(
+                PVSwindow,
+                -alpha,
+                LMRdepth,
+                ply + 1,
+                nullDepth,
+                currentEval,
+                currentPhase
+            );
+
+            research = score > alpha && score < beta && (PVS || LMR); // Only research if using a reduction
+#if VERBOSE  // #DEBUG
+            searches++; // #DEBUG
+            reducedsearches += PVS || LMR ? 1 : 0; // #DEBUG
+            PVSs += PVS ? 1 : 0; // #DEBUG
+            LMRs += LMR ? 1 : 0; // #DEBUG
+            researches += research ? 1 : 0; // #DEBUG
+#endif  // #DEBUG
+
+            if (research)
+                score = -Search(
+                    -beta,
+                    -alpha,
+                    depth - 1,
+                    ply + 1,
+                    nullDepth,
+                    currentEval,
+                    currentPhase
+                );
+
+            _board.UndoMove(move);
+
+            sinceLastIncrease++;
+
+            if (score <= bestScore)
+                continue;
+
+            bestScore = score;
+            alpha = Math.Max(alpha, bestScore);
+
+            if (refutation[ply].Item1 != move)
+                refutation[ply].Item2 = refutation[ply].Item1;
+            refutation[ply].Item1 = move;
+            PVS = false; //beta - alpha > 1; // Only use PVS for large windows
+            sinceLastIncrease = 0;
+
+            if (alpha >= beta)
+                break;
+        }
+
+        // Mate Detection
+        if (moves.Length <= 0)
+            if (qsearch)
+                return _board.IsInCheckmate() ? -32000 + ply : _board.IsInStalemate() ? ply : bestScore;
+            else
+                return _board.IsInCheck()? -32000 + ply : ply;
+
+        TT[key % TTsize] = refutation[ply].Item1;
+        return bestScore;
+    }
 
     public Move Think(Board board, Timer timer)
     {
-        // Start Intial Eval Calc
-        long evaluation = 0;
-        int phase = 0;
-
+#if VERBOSE  // #DEBUG
         researches = 0; // #DEBUG
         searches = 0; // #DEBUG
         reducedsearches = 0; // #DEBUG
         PVSs = 0; // #DEBUG
         LMRs = 0; // #DEBUG
+        quietPositions = 0; // #DEBUG
+        drawnQuietPositions = 0; // #DEBUG
+        checkmateQuietPositions = 0; // #DEBUG
         refutation[0].Item1 = Move.NullMove; // #DEBUG
+#endif  // #DEBUG
+
+        // Update Globals
+        _board = board;
+        _timer = timer;
+
+        // Start Intial Eval Calc
+        long evaluation = 0;
+        int phase = 0;
 
         for (int piece = 2; piece < 14; piece++)
         {
@@ -92,203 +300,43 @@ public class MyBot : IChessBot
         );
 
         // End Timer Control
+
+        // Search
+        int CurrentDepth = 0;
+
         try
         {
             for (CurrentDepth = 1; CurrentDepth <= 100; CurrentDepth++)
-                Search(board, timer, -32000, 32000, CurrentDepth, 0, evaluation, phase);
+                Search(-32000, 32000, CurrentDepth, 0, 1, evaluation, phase);
         }
         catch { }
 
-        ConsoleHelper.Log(
-            "Searches: "
-                + searches.ToString()
-                + " Researches: "
-                + researches.ToString()
-                + " Reduced Searches: "
-                + reducedsearches.ToString()
-                + " Primary Variation Searches: "
-                + PVSs.ToString()
-                + " Late Move Reductions: "
-                + LMRs.ToString()
-                + " Depth Attained: "
-                + CurrentDepth.ToString()
+        // End Search
+
+# if VERBOSE  // #DEBUG
+
+        ConsoleHelper.Log( // #DEBUG
+            "Searches: " // #DEBUG
+                + searches.ToString() // #DEBUG
+                //+ " Researches: " // #DEBUG
+                //+ researches.ToString() // #DEBUG
+                //+ " Reduced Searches: " // #DEBUG
+                //+ reducedsearches.ToString() // #DEBUG
+                //+ " Primary Variation Searches: " // #DEBUG
+                //+ PVSs.ToString() // #DEBUG
+                //+ " Late Move Reductions: " // #DEBUG
+                //+ LMRs.ToString() // #DEBUG
+                + " Depth Attained: " // #DEBUG
+                + CurrentDepth.ToString() // #DEBUG
+                + " Quiet Positions Seen: " // #DEBUG
+                + quietPositions.ToString() // #DEBUG
+                + " Quiet Positions Drawn: " // #DEBUG
+                + drawnQuietPositions.ToString() // #DEBUG
+                + " Quiet Positions Checkmate: " // #DEBUG
+                + checkmateQuietPositions.ToString() // #DEBUG
         ); // #DEBUG
+#endif // #DEBUG
 
         return refutation[0].Item1;
-    }
-
-    public int Search(
-        Board board,
-        Timer timer,
-        int alpha,
-        int beta,
-        int depth,
-        int ply,
-        long evaluation,
-        int phase
-    )
-    {
-        if (timer.MillisecondsElapsedThisTurn > allowedElapse) // Time Management
-            throw new Exception();
-
-        if (
-            board.IsInsufficientMaterial()
-            || board.IsRepeatedPosition()
-            || board.FiftyMoveCounter >= 100
-        )
-            return ply;
-
-        int bestScore = -64000;
-
-        bool qsearch = depth <= 0;
-
-        int score;
-
-        if (qsearch)
-        {
-            // Stand Pat Evaluation
-
-            decimal openingEval = Math.Round(evaluation / 40000m);
-
-            score =
-                // Decode Evaluation
-                (
-                    phase * (int)openingEval
-                    + (24 - phase) * (int)(evaluation - 40000m * openingEval)
-                ) / 24
-                + ply
-                - board.FiftyMoveCounter;
-
-            // End of Standpat Eval
-
-            if (score >= beta)
-                return beta;
-            if (score < alpha - 975 - 40 * (24 - phase))
-                return alpha;
-            alpha = Math.Max(alpha, score);
-        }
-
-        ulong key = board.ZobristKey;
-        (ulong, Move) entry = TT[key % TTsize];
-
-        // Move Ordering
-        Move[] moves = board.GetLegalMoves(qsearch);
-
-        int[] moveOrder = new int[moves.Length];
-        for (int i = 0; i < moves.Length; i++)
-        {
-            Move move = moves[i];
-
-            moveOrder[i] = -(
-                move == entry.Item2
-                    ? 100000
-                    : move == refutation[ply].Item1
-                        ? 99999 + (ply == 0 ? 2 : 0)
-
-                    : move == refutation[ply].Item2 ? 99998
-                        : move.IsCapture
-                            ? (int)move.CapturePieceType * 50 - (int)move.MovePieceType + 1000
-                            : move.IsPromotion
-                                ? (int)move.PromotionPieceType + 50
-                                : move.IsCastles
-                                    ? 50
-                                    : (int)move.MovePieceType * phase
-                                        - (int)move.MovePieceType * (24 - phase)
-            );
-        }
-
-        Array.Sort(moveOrder, moves);
-
-        if (ply == 0)
-            refutation[0].Item1 = moves[0];
-
-        // Setup for PVS and Late Move Reductions
-        int sinceLastIncrease = 0;
-
-        bool PVS = false;
-
-        foreach (Move move in moves)
-        {
-            board.MakeMove(move);
-            int capturedPiece = (int)move.CapturePieceType,
-                movedPiece = (int)move.MovePieceType,
-                promotedPiece = (int)move.PromotionPieceType,
-                resultPiece = move.IsPromotion ? promotedPiece : movedPiece,
-                currentPhase = Math.Clamp(
-                    phase - piecePhase[capturedPiece] + piecePhase[promotedPiece],
-                    0,
-                    24
-                );
-
-            long currentEval =
-                -evaluation
-                - pieceValue[capturedPiece]
-                + pieceValue[movedPiece]
-                - pieceValue[resultPiece];
-
-            bool LMR = sinceLastIncrease < 3
-                    ? false
-                    : sinceLastIncrease < 7
-                        ? !(capturedPiece > 0 || board.IsInCheck() || PVS)
-                        : !(capturedPiece > 1 || board.IsInCheck() || PVS),
-                research;
-
-            int PVSwindow = PVS ? -alpha - 1 : -beta,
-                LMRdepth = LMR ? depth - 3 : depth - 1;
-
-            score = -Search(
-                board,
-                timer,
-                PVSwindow,
-                -alpha,
-                LMRdepth,
-                ply + 1,
-                currentEval,
-                currentPhase
-            );
-
-            research = score > alpha && score < beta && (PVS || LMR);
-
-            searches++; // #DEBUG
-            reducedsearches += PVS || LMR ? 1 : 0; // #DEBUG
-            PVSs += PVS ? 1 : 0; // #DEBUG
-            LMRs += LMR ? 1 : 0; // #DEBUG
-            researches += research ? 1 : 0; // #DEBUG
-
-            if (research)
-                score = -Search(
-                    board,
-                    timer,
-                    -beta,
-                    -alpha,
-                    depth - 1,
-                    ply + 1,
-                    currentEval,
-                    currentPhase
-                );
-
-            board.UndoMove(move);
-
-            sinceLastIncrease++;
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                alpha = Math.Max(alpha, bestScore);
-                if(refutation[ply].Item1 != move) refutation[ply].Item2 = refutation[ply].Item1;
-                refutation[ply].Item1 = move;
-                PVS = false; //beta - alpha > 1; // Only use PVS for large windows
-                sinceLastIncrease = 0;
-
-                if (alpha >= beta)
-                    break;
-            }
-        }
-
-        if (moves.Length <= 0 && !qsearch)
-            return board.IsInCheck() ? -32000 + ply : ply;
-
-        TT[key % TTsize] = (key, refutation[ply].Item1);
-        return bestScore;
     }
 }
