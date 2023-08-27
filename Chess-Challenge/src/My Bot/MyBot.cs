@@ -31,7 +31,7 @@ using System.Diagnostics; // #DEBUG
 // 821, -173    ELO >= -364 against Tier 2 in 10 sec, updated mate detection, turned on LMR, fixed missing #DEBUGs
 // 822, +1      ELO >= -378 against Tier 2 in 10 sec, modified refutation to only include items greater than alpha (lost ELO, reverting)
 // 882, +60      90 - 852 -  58   ELO >= -379 against Tier 2 in 10 sec, Null Move Pruning, other updates
-// 882, +60     ??? - ??? - ???   ELO >= ???? against Tier 2 in 10 sec
+// 891, +9       96 - 848 -  56   ELO >= -371 against Tier 2 in 10 sec, Improved Best Move Detection
 
 public class MyBot : IChessBot
 {
@@ -97,7 +97,7 @@ public class MyBot : IChessBot
 
             decimal openingEval = Math.Round(evaluation / 40000m);
 
-            score =
+            bestScore =
                 // Decode Evaluation
                 (
                     phase * (int)openingEval
@@ -107,11 +107,11 @@ public class MyBot : IChessBot
 
             // End of Standpat Eval
 
-            if (score >= beta)
+            if (bestScore >= beta)
                 return beta;
-            if (score < alpha - 975 - 40 * (24 - phase))
+            if (bestScore < alpha - 975 - 40 * (24 - phase))
                 return alpha;
-            alpha = Math.Max(alpha, score);
+            alpha = Math.Max(alpha, bestScore);
         }
 
         // Transposition Table
@@ -304,10 +304,11 @@ public class MyBot : IChessBot
 
         // Search
         int CurrentDepth = 0;
+        Move bestMove = Move.NullMove;
 
         try
         {
-            for (CurrentDepth = 1; CurrentDepth <= 100; CurrentDepth++)
+            for (CurrentDepth = 1; CurrentDepth <= 100; CurrentDepth++, bestMove = refutation[0].Item1)
                 Search(-32000, 32000, CurrentDepth, 0, 1, evaluation, phase);
         }
         catch { }
@@ -338,6 +339,6 @@ public class MyBot : IChessBot
         ); // #DEBUG
 #endif // #DEBUG
 
-        return refutation[0].Item1;
+        return bestMove;
     }
 }
