@@ -18,17 +18,18 @@ namespace ChessChallenge.Application
                 Color white = new(225, 225, 225, 225);
                 Color red = new Color(200, 0, 0, 255);
                 Color green = new Color(0, 200, 0, 255);
-                Vector2 startPos = UIHelper.Scale(new Vector2(1500, 150));
+                Color blue = new Color(0, 0, 255, 255);
+                Vector2 startPos = UIHelper.Scale(new Vector2(1500, 100));
                 float spacingY = UIHelper.Scale(35);
 
                 DrawNextText($"Game {controller.CurrGameNumber} of {controller.TotalGameCount}", headerFontSize, Color.WHITE);
-                startPos.Y += spacingY * 2;
+                startPos.Y += spacingY;
 
                 DrawStats(controller.BotStatsA);
-                startPos.Y += spacingY * 2;
+                startPos.Y += spacingY;
                 DrawStats(controller.BotStatsB);
 
-                startPos.Y += spacingY * 2;
+                startPos.Y += spacingY;
 
                 string eloDifference = CalculateElo(controller.BotStatsA.NumWins, controller.BotStatsA.NumDraws, controller.BotStatsA.NumLosses);
                 string errorMargin = CalculateErrorMargin(controller.BotStatsA.NumWins, controller.BotStatsA.NumDraws, controller.BotStatsA.NumLosses);
@@ -45,6 +46,8 @@ namespace ChessChallenge.Application
                     DrawNextText($"Winrate: {(float)stats.NumWins / (controller.CurrGameNumber - 1) * 100}%", regularFontSize, green);
                     DrawNextText($"Draw rate: {(float)stats.NumDraws / (controller.CurrGameNumber - 1) * 100}%", regularFontSize, white);
                     DrawNextText($"Loss rate: {(float)stats.NumLosses / (controller.CurrGameNumber - 1) * 100}%", regularFontSize, red);
+                    DrawNextText($"Pts: {stats.NumWins + stats.NumDraws/2.0}", regularFontSize, blue);
+                    DrawNextText($"Pace: {stats.NumWins + stats.NumDraws/2.0 / (controller.CurrGameNumber - 1) * 1000}", regularFontSize, blue);
                 }
                 DrawNextText($"Average moves per game: {controller.trueTotalMovesPlayed / controller.CurrGameNumber - 1}", regularFontSize, white);
 
