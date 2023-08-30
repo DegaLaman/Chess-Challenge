@@ -30,9 +30,10 @@ using System.Diagnostics; // #DEBUG
 // 994, +2      ELO >= -534 against Tier 2 in 10 sec, ???
 // 821, -173    ELO >= -364 against Tier 2 in 10 sec, updated mate detection, turned on LMR, fixed missing #DEBUGs
 // 822, +1      ELO >= -378 against Tier 2 in 10 sec, modified refutation to only include items greater than alpha (lost ELO, reverting)
-// 882, +60      90 - 852 -  58   ELO >= -379 against Tier 2 in 10 sec, Null Move Pruning, other updates
-// 891, +9       96 - 848 -  56   ELO >= -371 against Tier 2 in 10 sec, Improved Best Move Detection
-// 891, +0       99 - 837 -  64   ELO >= -359 against Tier 2 in 10 sec, Removed ply score from draw condtions
+// 882, +60      90 - 852 -  58, 119 pts,   ELO >= -379 against Tier 2 in 10 sec, Null Move Pruning, other updates
+// 891, +9       96 - 848 -  56, 124 pts,   ELO >= -371 against Tier 2 in 10 sec, Improved Best Move Detection
+// 891, +0       99 - 837 -  64, 131 pts,   ELO >= -359 against Tier 2 in 10 sec, Removed ply score from draw condtions
+// 877, -14      90 - 836 -  74, 127 pts,   ELO >= -365 against Tier 2 in 10 sec, Unknown Changes
 
 public class MyBot : IChessBot
 {
@@ -162,9 +163,6 @@ public class MyBot : IChessBot
 
         Array.Sort(moveOrder, moves);
 
-        if (ply == 0)
-            refutation[0].Item1 = moves[0];
-
         foreach (Move move in moves)
         {
             _board.MakeMove(move);
@@ -246,9 +244,13 @@ public class MyBot : IChessBot
         // Mate Detection
         if (moves.Length <= 0)
             if (qsearch)
-                return _board.IsInCheckmate() ? -32000 + ply : _board.IsInStalemate() ? 0 : bestScore;
+                return _board.IsInCheckmate()
+                    ? -32000 + ply
+                    : _board.IsInStalemate()
+                        ? 0
+                        : bestScore;
             else
-                return _board.IsInCheck()? -32000 + ply : 0;
+                return _board.IsInCheck() ? -32000 + ply : 0;
 
         TT[key % TTsize] = refutation[ply].Item1;
         return bestScore;
@@ -303,7 +305,11 @@ public class MyBot : IChessBot
 
         try
         {
-            for (CurrentDepth = 1; CurrentDepth <= 100; CurrentDepth++, bestMove = refutation[0].Item1)
+            for (
+                CurrentDepth = 1;
+                CurrentDepth <= 100;
+                CurrentDepth++, bestMove = refutation[0].Item1
+            )
                 Search(-32000, 32000, CurrentDepth, 0, 1, evaluation, phase);
         }
         catch { }

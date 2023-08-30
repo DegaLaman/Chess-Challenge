@@ -151,9 +151,14 @@ namespace ChessChallenge.Application
         };
 
         static public int[,] pieceValue = new int[2, 6]
-    {
+    /*{
         { 82, 337, 365, 477, 1025, 0 },
         { 94, 281, 297, 512, 936, 0 }
+    }*/
+    
+    {
+        {  93, 327, 331, 482, 941, 0 },
+        { 107, 273, 269, 518, 859, 0 }
     };
 
 
